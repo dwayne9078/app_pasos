@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
 
     <uses-feature
         android:name="android.hardware.sensor.stepcounter"
@@ -53,26 +55,17 @@
         </service>
 
         <service
-            android:name=".tile.MainTileService"
-            android:exported="true"
-            android:label="@string/tile_label"
-            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
-            <intent-filter>
-                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
-            </intent-filter>
-
-            <meta-data
-                android:name="androidx.wear.tiles.PREVIEW"
-                android:resource="@drawable/tile_preview" />
-        </service>
-
-        <service
             android:name=".MyFirebaseMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".presentation.StepTrackerService"
+            android:foregroundServiceType="health"
+            android:exported="false"/>
 
         <uses-library
             android:name="com.google.android.wearable"
