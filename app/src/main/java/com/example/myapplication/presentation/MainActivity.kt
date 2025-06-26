@@ -1,13 +1,17 @@
-// MainActivity.kt
 package com.example.myapplication.presentation
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -24,12 +28,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat // Import for NotificationCompat
+import androidx.core.app.NotificationManagerCompat // Import for NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+import com.google.firebase.FirebaseApp // Import FirebaseApp
 
 // Import Wear OS specific Compose Material components
 import androidx.wear.compose.material.Button
@@ -42,6 +49,12 @@ import androidx.wear.compose.material.CompactButton // Often useful for smaller 
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.platform.LocalContext // To access BuildConfig.DEBUG
+import androidx.annotation.OptIn // Needed for @OptIn annotation
+import androidx.compose.foundation.ExperimentalFoundationApi // Needed for HorizontalPager
+
+// Define constants for the notification channel ID and notification ID
+const val NOTIFICATION_CHANNEL_ID = "step_tracker_channel"
+const val NOTIFICATION_ID = 101 // Unique ID for our notification
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
@@ -81,8 +94,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    // Launcher for requesting POST_NOTIFICATIONS permission (for Android 13+)
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (!isGranted) {
+            Toast.makeText(this, "Permiso de notificaciones requerido para mostrar alertas.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Firebase. This is crucial for FCM to work.
+        FirebaseApp.initializeApp(this)
+
+        // Create notification channel (important for Android O and above)
+        createNotificationChannel()
 
         // Check and request permissions upon creation
         checkPermissions()
@@ -96,8 +124,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     stepsPerSecond = stepsPerSecond,
                     isTracking = isTracking,
                     isSimulating = isSimulating,
-                    onToggleTracking = { toggleTracking() }, // Pass lambda for UI interaction
-                    onResetCounter = { resetCounter() }     // Pass lambda for UI interaction
+                    //onToggleTracking = { toggleTracking() }, // Pass lambda for UI interaction
+                    //onResetCounter = { resetCounter() }     // Pass lambda for UI interaction
                 )
             }
         }
@@ -120,6 +148,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     /**
      * Checks if the ACTIVITY_RECOGNITION permission is granted.
      * If not, it requests the permission.
+     * Also checks and requests POST_NOTIFICATIONS permission for Android 13+.
      */
     private fun checkPermissions() {
         when {
@@ -133,6 +162,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             else -> {
                 // Request the permission
                 requestPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }
+
+        // Check and request POST_NOTIFICATIONS permission for Android 13+ (API 33)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }
@@ -162,6 +202,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     /**
      * Toggles the tracking state (start/stop).
+     * This function is currently not called from the UI as per previous user request.
      */
     private fun toggleTracking() {
         if (isTracking) {
@@ -204,12 +245,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             isTracking = false
             simulationJob?.cancel() // Cancel simulation job if running
             simulationJob = null
-            sensorManager.unregisterListener(this) // Unregister all sensor listeners
+            // Check if sensorManager is initialized before unregistering listener
+            if (::sensorManager.isInitialized) {
+                sensorManager.unregisterListener(this) // Unregister all sensor listeners
+            }
         }
     }
 
     /**
      * Resets all step-related counters and history.
+     * This function is currently not called from the UI as per previous user request.
      */
     private fun resetCounter() {
         stopTracking() // Stop tracking before resetting
@@ -270,6 +315,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     /**
      * Changes the base simulation speed, clamped within a realistic range.
+     * This function is not currently used in the provided UI.
      */
     private fun changeSimulationSpeed(newSpeed: Double) {
         simulationSpeed = newSpeed.coerceIn(0.5, 4.0) // Clamp speed between 0.5 and 4.0 steps/sec
@@ -317,7 +363,63 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onDestroy() {
         super.onDestroy()
         simulationJob?.cancel() // Cancel any running simulation
-        sensorManager.unregisterListener(this) // Unregister sensor listeners
+        // Check if sensorManager is initialized before unregistering listener
+        if (::sensorManager.isInitialized) {
+            sensorManager.unregisterListener(this) // Unregister sensor listeners
+        }
+    }
+
+    /**
+     * Creates a notification channel for Android 8.0 (Oreo) and above.
+     * This is required for notifications to be displayed.
+     */
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Seguimiento de Pasos"
+            val descriptionText = "Notificaciones para el seguimiento de pasos de la aplicación."
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    /**
+     * Shows a sample notification. In a real app, this would be triggered by FCM.
+     * For demonstration, you could call this, for example, when currentSteps reaches a milestone.
+     */
+    fun showSampleNotification(title: String, message: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_notification_overlay) // Using a generic Android icon for simplicity
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingIntent) // Set the intent to launch when the user taps the notification
+            .setAutoCancel(true) // Automatically removes the notification when the user taps it
+
+        with(NotificationManagerCompat.from(this)) {
+            // For Android 13+ (API 33), POST_NOTIFICATIONS permission is required
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(
+                        this@MainActivity, // Use this@MainActivity for context
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    // Permission not granted, do not show notification
+                    // The permission request is handled in checkPermissions()
+                    return
+                }
+            }
+            notify(NOTIFICATION_ID, builder.build())
+        }
     }
 }
 
@@ -352,15 +454,12 @@ fun StepsPerSecondTheme(content: @Composable () -> Unit) {
 /**
  * The main screen composable that handles navigation between MainScreen and DetailsScreen.
  */
-// Required for HorizontalPager
 @Composable
 fun StepsScreen(
     currentSteps: Int,
     stepsPerSecond: Double,
     isTracking: Boolean,
     isSimulating: Boolean,
-    onToggleTracking: () -> Unit, // Callback for toggling tracking
-    onResetCounter: () -> Unit // Callback for resetting counter
 ) {
     // State for the elapsed time in seconds
     var timeElapsed by remember { mutableStateOf(0) }
@@ -396,10 +495,7 @@ fun StepsScreen(
             1 -> DetailsScreen(
                 currentSteps = currentSteps,
                 timeElapsed = timeElapsed,
-                stepsPerSecond = stepsPerSecond,
-                isTracking = isTracking,
-                onToggleTracking = onToggleTracking, // Pass the callback
-                onResetCounter = onResetCounter      // Pass the callback
+                stepsPerSecond = stepsPerSecond
             )
         }
     }
@@ -502,16 +598,13 @@ fun MainScreen(
 
 /**
  * Displays detailed statistics, including total steps, time elapsed, and average steps per second.
- * Also includes control buttons.
+ * Removed control buttons as per request.
  */
 @Composable
 fun DetailsScreen(
     currentSteps: Int,
     timeElapsed: Int,
-    stepsPerSecond: Double,
-    isTracking: Boolean,
-    onToggleTracking: () -> Unit,
-    onResetCounter: () -> Unit
+    stepsPerSecond: Double
 ) {
     Box(
         modifier = Modifier
@@ -564,45 +657,8 @@ fun DetailsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Control Buttons for tracking and reset
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(0.8f) // Make buttons take up most of the width
-            ) {
-                // Toggle Tracking Button
-                Button(
-                    onClick = onToggleTracking,
-                    modifier = Modifier.weight(1f), // Distribute weight evenly
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = if (isTracking) Color.Red else Color.Green
-                    )
-                ) {
-                    Text(
-                        text = if (isTracking) "PARAR" else "INICIAR",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Reset Counter Button
-                Button(
-                    onClick = onResetCounter,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color.DarkGray
-                    )
-                ) {
-                    Text(
-                        text = "REINICIAR",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-
-            Spacer(modifier = Modifier.height(16.dp))
+            // Removed the control buttons (Toggle Tracking and Reset Counter)
+            // as per the user's request.
 
             Text(
                 text = "← Desliza para regresar",

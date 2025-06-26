@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "612377392920",
+    "project_id": "app-pasos-73d34",
+    "storage_bucket": "app-pasos-73d34.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:612377392920:android:c25c3b91e278f725f3906d",
+        "android_client_info": {
+          "package_name": "com.example.myapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmy9srRjgTPddJvPtGnQxw2KrtHL-GZAc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
